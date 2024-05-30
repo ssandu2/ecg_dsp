@@ -100,6 +100,7 @@ test_plot <-
                                                                       1, aes(group = 1)) + geom_point() + scale_x_continuous(breaks = seq(0, 10, 1))
 test_plot
 
+#F wave extraction -----------------------------------------------------
 #Subsetting out all sample annotations that are not p, N, t
 fwave_sampleindices <- which(colors == 0)
 fwave_samplevalues <- samples[test_sample, ,1]
@@ -134,11 +135,23 @@ par(mfrow = c(2,1))
 plot(samples[test_sample, ,1], type = "l", main = "Original ECG Signal", xlab = "Time", ylab = "Amplitude")
 plot(ecg_fwave_only, type = "l", main = "Reconstructed ECG Signal", xlab = "Time", ylab = "Amplitude")
 
-#PCA
+#PCA--------------------------------------------------------------------
+
 #Extracting QRS complex. In progress.
 pcaprep <- data.frame(matrix(0, nrow = 5000 , ncol = dim(samples)[1]))
 for (i in 1:dim(samples)[1]) {
   pcaprep[, i] <- c(samples[i, ,1])
   }
-pcaprep<- t(pcaprep)
-qrs_pca <- prcomp(pcaprep, center = TRUE, scale. = TRUE)
+ecg_pca <- prcomp(pcaprep, center = TRUE, scale. = TRUE)
+pcaprep_scaled<- scale(pcaprep, center = TRUE)
+#Reconstruction of signal
+qrs_comp <- ecg_pca$x[,1:3]
+qrs_load <- ecg_pca$rotation[,1:3]
+qrs_re <- qrs_comp %*% t(qrs_load)
+#seems like mean isn't being added back. Will look into more.
+qrs_re_scaled<- data.frame(sweep(qrs_re, 2, attr(pcaprep_scaled, "scaled:center"), "+"))
+
+par(mfrow = c(2,1))
+plot(samples[test_sample, ,1], type = "l", main = "Original ECG Signal", xlab = "Time", ylab = "Amplitude")
+plot(qrs_re_scaled$'X1', type = "l", main = "Reconstructed QRS", xlab = "Time", ylab = "Amplitude")
+
