@@ -105,6 +105,7 @@ test_plot <-
                                                                       1, aes(group = 1)) + geom_point() + scale_x_continuous(breaks = seq(0, 10, 1))
 test_plot
 
+
 #F wave extraction -----------------------------------------------------
 #Subsetting out all sample annotations that are not p, N, t
 fwave_sampleindices <- which(colors == 0)
@@ -120,42 +121,50 @@ test_plot2 <- ggplot(test_frame2, aes(Time, fwave_samplevalues)) +
 test_plot2
 
 #ECG Fourier transform -> Power spectrum. Apply Re() to fft(samples[test_sample, ,1])
-# for power spectrum
-ecg_fft<- fft(samples[test_sample, ,1])
+#for power spectrum
+test_sample <- 1
+ecg_signal <- samples[test_sample, ,1]
+ecg_fft<- fft(ecg_signal)
 plot(ecg_fft)
 samp_freq <- 500
 
-n <- length(samples[test_sample, ,1])
-power <- (2* (ecg_fft)^2) / n^2
+n <- length(ecg_signal)
+power <- (2* Mod(ecg_fft)^2) / n^2
 freq <- (0:(n-1)) * (samp_freq/n)
-freq <- freq[1:n/2]
-power <- power[1:n/2]
-power_spec_df <- data.frame(frequency = freq, Power <- power )
+freq <- freq[1:(n/2)]
+power <- power[1:(n/2)]
+power_spec_df <- data.frame(frequency = freq, power <- power )
 
 power_spec_ggplot <- ggplot(power_spec_df, aes(freq, power)) + 
   geom_line() + xlim(0,50) + 
   labs(title = "Power spectrum of ECG",x = "Frequency (Hz)", y = "Power") + theme_minimal()
 
 #F wave extraction
-#f_wave_indices <- which(freq > 4 & freq < 10)
-ecg_fft_new <- ecg_fft[1:(n/2 +1)]
-f_wave_indices <- which(freq >= 4 & freq <= 10)
-ecg_fft_new[-f_wave_indices] <- 0
+fwave_indices <- which(freq >= 3 & freq <= 7)
+fwave_ecg_fft <- ecg_fft
+fwave_ecg_fft[-c(fwave_indices, (n - fwave_indices + 1))] <- 0
 
 #Reconstruct ECG using new FFT
-full_fft <- c(ecg_fft_new, rev(Conj(ecg_fft_new[-1])))
-length(full_fft)
-full_fft <- full_fft[1:n]
-reecg_fwave_only <- Re(fft(full_fft, inverse = TRUE)) / n
-re_ecg_frame <- data.frame(Time2 = 1:5000/500, Signal2 = reecg_fwave_only)
-re_ecgfwaveggplot <- ggplot(re_ecg_frame, aes(Time2, Signal2)) + 
-  geom_line()  + 
-  labs(title = "Reconstructed ECG f waves",x = "Time", y = "Amplitude (mV)") + theme_minimal()
+reecg_fwave_only <- Re(fft(fwave_ecg_fft, inverse = TRUE)) / n
+re_ecg_frame <- data.frame(Time2 = 1:length(reecg_fwave_only)/500,  Signal2 = reecg_fwave_only)
 
-#Graph reconstructed ECG using new FFT.
-par(mfrow = c(2,1))
-plot(samples[test_sample, ,1], type = "l", main = "Original ECG Signal", xlab = "Time", ylab = "Amplitude")
-plot(reecg_fwave_only, type = "l", main = "Reconstructed ECG Signal", xlab = "Time", ylab = "Amplitude")
+#Graph original and reconstructed ECG using new FFT.
+original_ecg_frame <- data.frame(Time = 1:5000/500, Signal = ecg_signal)
+original_ecg_ggplot <- ggplot(original_ecg_frame, aes(x = Time, y = Signal)) +
+  geom_line() + labs(title = "Original ECG Signal", x = "Time (s)", y = "Amplitude") +
+  theme_minimal()
+re_ecgfwaveggplot <- ggplot(re_ecg_frame, aes(Time2, Signal2)) + 
+  geom_line()  + labs(title = "Reconstructed ECG f waves",x = "Time", y = "Amplitude (mV)") + theme_minimal()
+
+# Create a data frame for plotting the reconstructed ECG signal
+comb_ecg_frame <- rbind(
+ data.frame(Time = re_ecg_frame$Time, Signal = re_ecg_frame$Signal, ECG = "F waves (Reconstructed)"), 
+            data.frame(Time = original_ecg_frame$Time, Signal = original_ecg_frame$Signal, ECG = "Original")
+)
+
+comb_ecg_ggplot <- ggplot(comb_ecg_frame, aes(x = Time, y = Signal, color = ECG)) + geom_line() +
+  labs(title = "Original and F wave (Reconstructed) Signals", x = "Time (s)", y = "Amplitude") +
+  theme_minimal()
 
 #PCA--------------------------------------------------------------------
 
