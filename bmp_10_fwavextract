@@ -1,0 +1,44 @@
+library(signal)
+library(ggplot2)
+library(writexl)
+load("C:/Users/shsan/Downloads/fwave_signal (1).RData")
+# Plot of original vs AA signal, deciding to whether to keep aa_signal or aa_filtered as final f wave
+ecg_plot_df <- data.frame(
+   Time = seq_along(fwave_signal[1, ,1]),
+   Signal = fwave_signal[1, ,1]
+  
+)
+
+ecg_plot <- ggplot(ecg_plot_df, aes(x = Time)) +
+  geom_line(aes(y = Signal, color = "Original")) +
+  labs(title = "F wave signal", x = "Time (samples)", y = "Amplitude (mV)", color = "Signal Type") +
+  scale_color_manual(values = c("Original" = "blue")) +
+  theme_minimal() +
+  theme(plot.title = element_text(size = 10))
+
+print(ecg_plot)
+
+# make loop going through each ECG and outputting the data in an excel sheet
+# structure should be ID, 3 columns corresponding to 3 variables
+
+# Initialize an empty data frame to store results
+results_df <- data.frame(ECG_ID = character(), RMS_Amplitude = numeric(), Approx_Entropy = numeric(), Dominant_Frequency = numeric(), stringsAsFactors = FALSE)
+
+# Iterate through each ECG signal in fwave_signal
+for (i in 1:dim(fwave_signal)[1]) {
+  # Extract the current ECG signal
+  sample_ecg_signal <- fwave_signal[i, , 2]  # Assuming you're working with the second lead
+  
+  # Create a unique ECG ID for each signal
+  ecg_id <- paste0("ECG_", i)
+  
+  # Process the signal using the extractfwave function
+  result <- extractfwave(sample_ecg_signal, samp_freq = 500, ecg_id = ecg_id)
+  
+  # Append the result to the results data frame
+  results_df <- rbind(results_df, result)
+}
+
+# Write the combined results to a single Excel file
+write_xlsx(results_df, path = "BMP12leadii_fwave_parameters.xlsx")
+View(results_df)
