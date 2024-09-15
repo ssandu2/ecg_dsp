@@ -181,52 +181,13 @@ extractfwave <- function(ecg_signal, samp_freq = 500, ecg_id = "ECG_ID") {
     theme_minimal() +
     theme(plot.title = element_text(size = 10))
   
-  print(ecg_plot)
+  print(ecg_plot) 
   
-  #Parameter calculation: RMS, ApEn, DS
-  # Assuming aa_filtered is the isolated atrial activity signal from the previous steps
-  
-  # Calculate RMS Amplitude (Root Mean Square)
-  rms_amplitude <- sqrt(mean(aa_filtered^2))
-  
-  # Function to calculate Approximate Entropy (ApEn)
-  calc_apen <- function(signal, m = 3, r = 0.2) {
-    n <- length(signal)
-    phi <- function(m) {
-      x <- embed(signal, m)
-      c <- apply(x, 1, function(xi) sum(abs(x - matrix(rep(xi, n - m + 1), nrow = n - m + 1, byrow = TRUE)) < r) / (n - m + 1))
-      return((n - m + 1)^(-1) * sum(log(c)))
-    }
-    return(abs(phi(m) - phi(m + 1)))
-  }
-  
-  # Calculate Approximate Entropy (ApEn)
-  # Threshold r is set to 3.5 times the standard deviation of the signal
-  threshold <- 3.5 * sd(aa_filtered)
-  approx_entropy <- calc_apen(aa_filtered, m = 3, r = threshold)
-  
-  # Calculate Dominant Frequency (DF) within the 3-9 Hz band
-  # FFT to calculate the power spectral density (PSD)
-  n <- length(aa_filtered)
-  freqs <- seq(0, new_samp_freq / 2, length.out = floor(n / 2) + 1)
-  fft_result <- fft(aa_filtered)
-  psd <- (Mod(fft_result)^2) / n
-  psd <- psd[1:(floor(n / 2) + 1)]
-  
-  # Restrict to 3-9 Hz
-  freq_band <- freqs[freqs >= 3 & freqs <= 9]
-  psd_band <- psd[freqs >= 3 & freqs <= 9]
-  
-  # Dominant Frequency (Hz)
-  dominant_freq <- freq_band[which.max(psd_band)]
-  dominant_rate_per_min <- dominant_freq * 60
-  
-  
-  # Output: DataFrame for Atrial Activity and Excel File for parameters
+  #dataframe for Atrial Activity and Excel File for parameters
   
   atrial_activity_df <- data.frame(Time = seq_along(aa_filtered), AtrialActivity = aa_filtered)
   
-  # Create a data frame to hold the output
+  #data frame to hold the output
   output_data <- data.frame(
     ECG_ID = ecg_id,
     RMS_Amplitude = rms_amplitude,
@@ -238,8 +199,8 @@ extractfwave <- function(ecg_signal, samp_freq = 500, ecg_id = "ECG_ID") {
   return(output_data)
 }
 
-# Example usage
-sample_ecg_signal <- samples[3, , 1]  # Example ECG signal
+#example usage
+sample_ecg_signal <- samples[3, , 1]
 result <- extractfwave(sample_ecg_signal, samp_freq = 500, ecg_id = "test")
 
 
