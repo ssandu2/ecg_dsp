@@ -1,23 +1,19 @@
-getwd()
-setwd("C:/Users/shsan/Documents/Medical School/Research Elective Summer 2024")
-
 library(dplyr)
 library(readxl)
 library(writexl)
 library(httr2)
 library(jsonlite)
 
-#AUTOMATING GENE COLLLECTION
 #functions--------------------------------------
 #obtaining gene lists gen
-search_genes <- function (term, retmax = 100){
+search_genes <- function (term, retmax = 300){
   url <- paste0("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?",
                 "db=gene&term=", URLencode(term), "&retmax=", retmax, "&retmode=json")
-  
-  search_response<- request(url) %>% req_perform()
-  json_response <- resp_body_string(search_response) %>% fromJSON()
-  gene_ids <- json_response$esearchresult$idlist
-  return(gene_ids)
+
+ search_response<- request(url) %>% req_perform()
+ json_response <- resp_body_string(search_response) %>% fromJSON()
+ gene_ids <- json_response$esearchresult$idlist
+ return(gene_ids)
 }
 
 obtain<- function(gene_ids){
@@ -33,12 +29,12 @@ obtain<- function(gene_ids){
 }
 #extracting gene info
 summarize <- function(summary) {
-  list(gene_name <- summary$name,
+    list(gene_name <- summary$name,
        gene_aliases <- summary$otheraliases,
        gene_descr <- summary$description,
        gene_desig <- summary$otherdesignations,
        gene_summary <- summary$summary
-  )
+       )
 }
 
 expand_geneinfo <- function(gene_info_prep){
@@ -69,7 +65,7 @@ convert_togenedf <- function(gene_list){
 term <- "atrial fibrillation and cardiomyopathy"
 
 #Gene search
-gene_ids <- search_genes(term, retmax = 100)
+gene_ids <- search_genes(term, retmax = 300)
 
 #Obtain gene info
 gene_info_prep <- obtain(gene_ids)
@@ -81,18 +77,19 @@ gene_list <- expand_geneinfo(gene_info_prep)
 gene_info_df <- convert_togenedf(gene_list)
 View(gene_info_df)
 
-#LABELLING 
+#Labelling
 
 #function -------------------------------------------
 # 1 = ion channel, 2 = sarcomeric, 3 = metabolic
 afib_cm_label <- function(gene_info_df){
   for(i in 1:nrow(gene_info_df))
-  {
+    {
     comparison <- paste(gene_info_df[i, ]$'description', gene_info_df[i, ]$'other designations', gene_info_df[i, ]$'summary', collapse = ",")
     gene_info_df$Classification[i] <- ifelse(grepl("channel|voltage", comparison), 1,
-                                             ifelse (grepl("muscle|desmin|lamin|myosin|sarcomer|titin", comparison), 2,
-                                                     ifelse (grepl("metabol|fatty|glycoly|citric acid|oxidati|mitochondr", comparison), 3,0)
-                                             ))
+                                          ifelse (grepl("muscle|desmin|lamin|myosin|sarcomer|titin", comparison), 2,
+                                                  ifelse (grepl("metabol|fatty|glycoly|citric acid|oxidati|mitochondr", comparison), 3,
+                                                          ifelse (grepl("cytoskeleton|matrix|adhesion|scaffold", comparison), 4,0)
+                                          )))
   }
   return(gene_info_df)
 }
@@ -100,3 +97,6 @@ afib_cm_label <- function(gene_info_df){
 #test ---------------------------------------------
 gene_df_labelled <- afib_cm_label(gene_info_df)
 View(gene_df_labelled)
+write_xlsx(gene_df_labelled, path = "AF_CM_Genelist_newnew.xlsx", col_names = FALSE, format_headers = FALSE)
+
+  
