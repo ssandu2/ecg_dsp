@@ -1,0 +1,138 @@
+
+#ecg_signal <- raw ECG signal sampled at 5000 hz, 10s. Pass through bandpass filter(s) before storing in 'signal'.
+#r_peaks <- vector of indices of r peaks in 'ecg_signal'
+
+#Basic morphological features
+extract_basic <- function(ecg_signal, r_peaks, fs = 500) {
+  if (length(r_peaks) < 2) {
+    return(data.frame(qrs_duration = NA, pr_interval = NA, st_elevation = NA, 
+                      t_amplitude = NA, p_amplitude = NA))
+  }
+  
+  qrs_durations <- numeric(length(r_peaks) - 1)
+  pr_intervals <- numeric(length(r_peaks))
+  st_elevations <- numeric(length(r_peaks))
+  t_amplitudes <- numeric(length(r_peaks))
+  p_amplitudes <- numeric(length(r_peaks))
+  
+  for (i in seq_along(r_peaks)) {
+    r_id <- r_peaks[i]
+    
+    #QRSduration(Q to S, ~120 ms window)
+    q_start <- max(1, r_id - round(fs * 0.06))
+    s_end <- min(length(ecg_signal), r_id + round(fs * 0.06))
+    qrs_durations[i] <- (s_end - q_start) / fs
+    
+    #PRinterval(P onset to R, ~150 ms window)
+    p_start <- max(1, r_id - round(fs * 0.15))
+    pr_intervals[i] <- (r_id - p_start) / fs
+    p_amplitudes[i] <- max(signal[p_start:r_id], na.rm = TRUE) - 
+      min(ecg_signal[p_start:r_id], na.rm = TRUE)
+    
+    #STelevation(80 ms post-R)
+    st_id <- r_id + round(fs * 0.08)
+    if (st_id <= length(ecg_signal)) {
+      st_elevations[i] <- ecg_signal[st_id] - mean(ecg_signal[(st_id-5):(st_id+5)], na.rm = TRUE)
+    }
+    
+    #T-waveamplitude(200 ms post-R)
+    t_id <- r_id + round(fs * 0.2)
+    if (t_id <= length(ecg_signal)) {
+      t_amplitudes[i] <- max(ecg_signal[(t_id-10):(t_id+10)], na.rm = TRUE)
+    }
+  }
+  
+  return(data.frame(
+    qrs_duration = mean(qrs_durations, na.rm = TRUE),
+    pr_interval = mean(pr_intervals, na.rm = TRUE),
+    st_elevation = mean(st_elevations, na.rm = TRUE),
+    t_amplitude = mean(t_amplitudes, na.rm = TRUE),
+    p_amplitude = mean(p_amplitudes, na.rm = TRUE)
+  ))
+}
+
+#Fragmented QRS detection (Das et al., 2006)
+detect_fragmented_qrs <- function(ecg_signal, r_peaks, fs = 500) {
+  if (length(r_peaks) < 2) return(FALSE)
+  
+  frag_count <- 0
+  for (r_id in r_peaks) {
+    window <- ecg_signal[max(1, r_id - round(fs * 0.06)):min(length(ecg_signal), r_id + round(fs * 0.06))]
+    diff_signal <- diff(window)
+    zero_crossings <- sum(abs(diff(sign(diff_signal))) > 0, na.rm = TRUE)
+    high_freq_content <- sum(abs(diff_signal) > 1.5 * mean(abs(diff_signal)), na.rm = TRUE)
+    if (zero_crossings > 3 && high_freq_content > 5) frag_count <- frag_count + 1
+  }
+  
+  return(frag_count / length(r_peaks) > 0.5)
+}
+
+#T-wave alternans (Verrier et al., 2011)
+detect_t_wave_alternans <- function(ecg_signal, r_peaks, fs = 500) {
+  if (length(r_peaks) < 3) return(NA)
+  
+  t_amplitudes <- numeric(length(r_peaks))
+  for (i in seq_along(r_peaks)) {
+    t_id <- r_peaks[i] + round(fs * 0.2)
+    if (t_id + 10 <= length(ecg_signal)) {
+      t_amplitudes[i] <- max(ecg_signal[(t_id-10):(t_id+10)], na.rm = TRUE) -
+        min(ecg_signal[(t_id-10):(t_id+10)], na.rm = TRUE)
+    } else {
+      t_amplitudes[i] <- NA
+    }
+  }
+  
+  alternans <- mean(abs(diff(t_amplitudes)), na.rm = TRUE)
+  return(ifelse(is.na(alternans), 0, alternans > 0.08))
+}
+
+#Early repolarization (Haissaguerre et al., 2008)
+detect_early_repolarization <- function(ecg_signal, r_peaks, fs = 500) {
+  if (length(r_peaks) < 2) return(FALSE)
+  
+  erp_count <- 0
+  for (r_id in r_peaks) {
+    j_id <- r_id + round(fs * 0.04) # J-point ~40 ms post-R
+    if (j_id + 10 <= length(ecg_signal)) {
+      j_elevation <- ecg_signal[j_id] - mean(ecg_signal[(j_id+1):(j_id+10)], na.rm = TRUE)
+      slope <- mean(diff(ecg_signal[j_id:(j_id+10)]), na.rm = TRUE)
+      if (j_elevation > 0.1 && slope < -0.01) erp_count <- erp_count + 1
+    }
+  }
+  
+  return(erp_count / length(r_peaks) > 0.5)
+}
+
+#sample entropy and approximate entropy
+extract_entropy_features <- function(ecg_signal, m = 2, r = 0.2) {
+  if (!require("pracma")) install.packages("pracma")
+  library(pracma)
+  
+  samp_en <- sample_entropy(ecg_signal, m = m, r = r * sd(ecg_signal))
+  app_en <- approx_entropy(ecg_signal, m = m, r = r * sd(ecg_signal))
+  
+  return(data.frame(
+    sample_entropy = samp_en,
+    approx_entropy = app_en
+  ))
+}
+
+#Wrapping function
+#Note: 'ecg_signal' should be a filtere ECG signal
+extract_ecg_features <- function(ecg_signal, sampling_freq = 500) {
+
+  #Extract features
+  basic_features <- extract_basic(ecg_signal, r_peaks, sampling_freq)
+  frag_qrs <- detect_fragmented_qrs(ecg_signal, r_peaks, sampling_freq)
+  twa <- detect_t_wave_alternans(ecg_signal, r_peaks, sampling_freq)
+  erp <- detect_early_repolarization(ecg_signal, r_peaks, sampling_freq)
+  entropy_features <- extract_entropy_features(ecg_signal)
+  
+  #Combine all features
+  return(bind_cols(
+    basic_features,
+    data.frame(fragmented_qrs = frag_qrs, t_wave_alternans = twa, early_repolarization = erp),
+    entropy_features
+  ))
+}
+
