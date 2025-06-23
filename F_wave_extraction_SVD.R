@@ -1,6 +1,6 @@
-library(signal)
+library(signal)#--
 library(ggplot2)
-test_sample <- 3
+test_sample <- 3 
 ecg_signal <- samples[test_sample, ,1]
 samp_freq <- 500
 #Bandpass filter ---------------
