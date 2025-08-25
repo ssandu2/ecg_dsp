@@ -1,0 +1,48 @@
+# Fragmented QRS Detection for Single-Lead ECG
+# Working Definition: fQRS has >=2 R’ waves or notches in R or S wave (not the R-peak)
+detect_fragmented_qrs <- function(ecg_signal, qrs_start, qrs_end, r_peaks, t_wave_start, fs = 500) {
+  # Input validation
+  if (length(ecg_signal) != 5000) stop("ECG signal must be 10 seconds at 500 Hz (5000 samples)")
+  #if (!is.vector(ecg_signal)) stop("ECG signal must be a numeric vector")
+  #if (length(qrs_start) != length(qrs_end) ||
+  #    length(qrs_start) != length(r_peaks) ||
+  #    length(qrs_start) != length(t_wave_start)) {
+  #  stop("All input vectors (qrs_start, qrs_end, r_peaks, t_wave_start) must have the same length")
+  #}
+  if (any(r_peaks < qrs_start | r_peaks > qrs_end)) stop("R-peaks must be within QRS bounds")
+  #if (any(t_wave_start <= r_peaks | t_wave_start > qrs_end)) stop("T-wave start indices must be after R-peaks and within QRS bounds")
+  
+  # initialize output vector
+  is_fragmented <- logical(length(r_peaks))
+  
+  # process each QRS complex
+  for (i in seq_along(r_peaks)) {
+    # extract QRS window
+    start_idx <- qrs_start[i]
+    end_idx <- min(qrs_end[i], t_wave_start[i]) # limit s-wave region to onset of t-wave
+    r_peak_idx <- r_peaks[i]
+    qrs_window <- ecg_signal[start_idx:end_idx]
+    
+    # first derivative to detect notches
+    diff_signal <- diff(qrs_window)
+    
+    #identifing sign changes in the derivative (indicating notches)
+    sign_changes <- which(abs(diff(sign(diff_signal))) > 0) + start_idx
+    
+    #exclude r-peak from notch detection (10 ms -> 5 samples at 500 Hz)
+    r_peak_exclusion <- r_peak_idx + (-5:5)
+    valid_sign_changes <- sign_changes[!sign_changes %in% r_peak_exclusion]
+    
+    #count notches in R and S wave regions
+    r_wave_notches <- sum(valid_sign_changes >= start_idx & valid_sign_changes < r_peak_idx)
+    s_wave_notches <- sum(valid_sign_changes > r_peak_idx & valid_sign_changes <= end_idx)
+    
+    #total notches + additional division by 2 
+    total_notches <- (r_wave_notches + s_wave_notches) / 2
+    
+    #fQRS criterion: >=2 notches 
+    is_fragmented[i] <- total_notches >= 2
+  }
+  
+  return(is_fragmented)
+}
