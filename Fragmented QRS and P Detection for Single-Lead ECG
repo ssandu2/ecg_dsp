@@ -1,0 +1,102 @@
+#Fragmented QRS Detection for Single-Lead ECG
+#working definition: fQRS has >=2 R' waves or notches in R or S wave (not the R-peak)
+detect_fragmented_qrs <- function(ecg_signal, qrs_start, qrs_end, r_peaks, t_wave_start, fs = 500) {
+  # Input validation
+  if (length(ecg_signal) != 5000) stop("ECG signal must be 10 seconds at 500 Hz (5000 samples)")
+  #if (!is.vector(ecg_signal)) stop("ECG signal must be a numeric vector")
+  #if (length(qrs_start) != length(qrs_end) ||
+  #    length(qrs_start) != length(r_peaks) ||
+  #    length(qrs_start) != length(t_wave_start)) {
+  #  stop("All input vectors (qrs_start, qrs_end, r_peaks, t_wave_start) must have the same length")
+  #}
+  if (any(r_peaks < qrs_start | r_peaks > qrs_end)) stop("R-peaks must be within QRS bounds")
+  #if (any(t_wave_start <= r_peaks | t_wave_start > qrs_end)) stop("T-wave start indices must be after R-peaks and within QRS bounds")
+  
+  # initialize output vector
+  is_fragmented <- logical(length(r_peaks))
+  
+  # process each QRS complex
+  for (i in seq_along(r_peaks)) {
+    # extract QRS window
+    start_idx <- qrs_start[i]
+    end_idx <- min(qrs_end[i], t_wave_start[i]) # limit s-wave region to onset of t-wave
+    r_peak_idx <- r_peaks[i]
+    qrs_window <- ecg_signal[start_idx:end_idx]
+    
+    # first derivative to detect notches
+    diff_signal <- diff(qrs_window)
+    
+    #identifing sign changes in the derivative (indicating notches)
+    sign_changes <- which(abs(diff(sign(diff_signal))) > 0) + start_idx
+    
+    #exclude r-peak from notch detection (10 ms -> 5 samples at 500 Hz)
+    r_peak_exclusion <- r_peak_idx + (-5:5)
+    valid_sign_changes <- sign_changes[!sign_changes %in% r_peak_exclusion]
+    
+    #count notches in R and S wave regions
+    r_wave_notches <- sum(valid_sign_changes >= start_idx & valid_sign_changes < r_peak_idx)
+    s_wave_notches <- sum(valid_sign_changes > r_peak_idx & valid_sign_changes <= end_idx)
+    
+    #total notches + additional division by 2 
+    total_notches <- (r_wave_notches + s_wave_notches) / 2
+    
+    #fQRS criterion: >=2 notches 
+    is_fragmented[i] <- total_notches >= 2
+  }
+  
+  return(is_fragmented)
+}
+
+----------------------------------------------------------------------------------------------------------
+#fragmented p Wave (fP) Detection for Single-Lead ECG
+#Working Definition: fP waves have >=2 notches or irregularities in P wave (not the P-peak)
+detect_fragmented_p_waves <- function(ecg_signal, qrs_start, qrs_end, p_peaks, t_wave_start, fs = 500) {
+  # Input validation
+  if (length(ecg_signal) != 5000) stop("ECG signal must be 10 seconds at 500 Hz (5000 samples)")
+  if (!is.vector(ecg_signal)) stop("ECG signal must be a numeric vector")
+  if (length(qrs_start) != length(qrs_end) || 
+      length(qrs_start) != length(p_peaks) || 
+      length(qrs_start) != length(t_wave_start)) {
+    stop("All input vectors (qrs_start, qrs_end, p_peaks, t_wave_start) must have the same length")
+  }
+  if (any(p_peaks >= qrs_start | p_peaks < 1)) stop("P-peaks must be before QRS start and within signal bounds")
+  if (any(t_wave_start <= qrs_end | t_wave_start > length(ecg_signal))) stop("T-wave start indices must be after QRS end and within signal bounds")
+  
+  #output vector
+  is_fragmented <- logical(length(p_peaks))
+  
+  # p wave processing
+  for (i in seq_along(p_peaks)) {
+    # Estimate P wave window: 100 ms (50 samples at 500 Hz) before qrs_start, centered around p_peak
+    p_window_size <- round(fs * 0.1) # 100 ms = 50 samples
+    p_start_idx <- max(1, qrs_start[i] - p_window_size)
+    p_end_idx <- min(qrs_start[i] - 1, p_start_idx + (2 * p_window_size) - 1) # Ensure within signal
+    p_peak_idx <- p_peaks[i]
+    
+    #centering window around p_peak_idx
+    if (p_peak_idx >= p_start_idx && p_peak_idx <= p_end_idx) {
+      p_window <- ecg_signal[p_start_idx:p_end_idx]
+    } else {
+      #if p-peak outside estimated window, skip or adjust
+      next
+    }
+    
+    #first derivative to detect notches
+    diff_signal <- diff(p_window)
+    
+    
+    sign_changes <- which(abs(diff(sign(diff_signal))) > 0) + p_start_idx
+    
+   
+    p_peak_exclusion <- p_peak_idx + (-5:5)
+    valid_sign_changes <- sign_changes[!sign_changes %in% p_peak_exclusion]
+    
+    # count notches in P wave region
+    p_wave_notches <- length(valid_sign_changes)/2
+    
+    # fP wave criterion: >=2 notches
+    is_fragmented[i] <- p_wave_notches >= 2
+  }
+  
+  return(is_fragmented)
+}
